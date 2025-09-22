@@ -1,0 +1,350 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storage Access Dashboard</title>
+    <script src="/libs/tailwindcss/tailwindcss.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class'
+        }
+    </script>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen">
+    
+    <!-- Login Container -->
+    <div id="login-container" class="flex items-center justify-center min-h-screen">
+        <div class="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-lg max-w-md w-full">
+            <h2 class="text-2xl font-bold text-center text-gray-800 dark:text-gray-100 mb-6">
+                Storage Access Dashboard
+            </h2>
+            <form id="login-form" class="space-y-4">
+                <input
+                    type="text"
+                    id="username"
+                    placeholder="Username"
+                    required
+                    class="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                    type="password"
+                    id="password"
+                    placeholder="Password"
+                    required
+                    class="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                    type="submit"
+                    class="w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition"
+                >
+                    Access Storage Dashboard
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Storage Dashboard -->
+    <div id="storage-dashboard" class="hidden min-h-screen p-6">
+        <div class="max-w-7xl mx-auto">
+            <header class="flex justify-between items-center mb-8">
+                <h1 class="text-3xl font-bold text-blue-800 dark:text-blue-200">
+                    Storage Access Dashboard
+                </h1>
+                <button id="refresh-data" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
+                    🔄 Refresh Data
+                </button>
+            </header>
+
+            <!-- Access Statistics -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+                    <h3 class="text-lg font-semibold mb-2">Total Tracked Users</h3>
+                    <p class="text-3xl font-bold text-blue-600" id="total-requests">0</p>
+                </div>
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+                    <h3 class="text-lg font-semibold mb-2">Unique Identities</h3>
+                    <p class="text-3xl font-bold text-green-600" id="unique-users">0</p>
+                </div>
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+                    <h3 class="text-lg font-semibold mb-2">Recent Activity (24h)</h3>
+                    <p class="text-3xl font-bold text-orange-600" id="recent-access">0</p>
+                </div>
+            </div>
+
+            <!-- User Access List -->
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                <h2 class="text-xl font-semibold mb-4">User Access Log</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full table-auto">
+                        <thead>
+                            <tr class="border-b">
+                                <th class="text-left p-3">User ID</th>
+                                <th class="text-left p-3">IP Address</th>
+                                <th class="text-left p-3">Access Time</th>
+                                <th class="text-left p-3">Browser</th>
+                                <th class="text-left p-3">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="access-log-table">
+                            <!-- Data will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Access Modal -->
+    <div id="file-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+        <div class="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-2xl max-w-6xl w-full mx-4 max-h-screen overflow-y-auto">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold">User File Access</h2>
+                <button id="close-file-modal" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+            </div>
+            <div id="file-content">
+                <!-- File data will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentUser = null;
+
+        // Login functionality
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    currentUser = result.user;
+                    
+                    if (currentUser.role !== 'storage_admin') {
+                        alert('Access denied. Storage admin privileges required.');
+                        return;
+                    }
+                    
+                    document.getElementById('login-container').classList.add('hidden');
+                    document.getElementById('storage-dashboard').classList.remove('hidden');
+                    
+                    await loadStorageData();
+                } else {
+                    alert(result.message || 'Invalid credentials');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                alert('Login failed. Please try again.');
+            }
+        });
+
+        // Load storage access data
+        async function loadStorageData() {
+            try {
+                const response = await fetch('/api/storage-access-logs');
+                const logs = await response.json();
+                
+                updateStatistics(logs);
+                renderAccessLog(logs);
+            } catch (error) {
+                console.error('Error loading storage data:', error);
+            }
+        }
+
+        // Update statistics
+        function updateStatistics(logs) {
+            const totalRequests = logs.length;
+            const uniqueUsers = new Set(logs.map(log => log.user_identifier)).size;
+            const recentAccess = logs.filter(log => 
+                new Date(log.access_timestamp) > new Date(Date.now() - 24 * 60 * 60 * 1000)
+            ).length;
+
+            document.getElementById('total-requests').textContent = totalRequests;
+            document.getElementById('unique-users').textContent = uniqueUsers;
+            document.getElementById('recent-access').textContent = recentAccess;
+        }
+
+        // Render access log table
+        function renderAccessLog(logs) {
+            const tableBody = document.getElementById('access-log-table');
+            tableBody.innerHTML = '';
+
+            logs.forEach(log => {
+                const row = document.createElement('tr');
+                row.className = 'border-b hover:bg-gray-50 dark:hover:bg-gray-700';
+                
+                const browserInfo = JSON.parse(log.browser_info || '{}');
+                const browserName = getBrowserName(browserInfo.userAgent || 'Unknown');
+                
+                row.innerHTML = `
+                    <td class="p-3">${log.user_identifier}</td>
+                    <td class="p-3">${log.ip_address}</td>
+                    <td class="p-3">${new Date(log.access_timestamp).toLocaleString()}</td>
+                    <td class="p-3">${browserName}</td>
+                    <td class="p-3">
+                        <button onclick="viewUserFiles('${log.user_identifier}')" 
+                                class="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 transition">
+                            View Files
+                        </button>
+                    </td>
+                `;
+                
+                tableBody.appendChild(row);
+            });
+        }
+
+        // View user files
+        async function viewUserFiles(userId) {
+            try {
+                const response = await fetch(`/api/storage-file-access/${userId}`);
+                const fileData = await response.json();
+                
+                const fileContent = document.getElementById('file-content');
+                fileContent.innerHTML = `
+                    <h3 class="text-lg font-semibold mb-4">Complete File System Access for User: ${userId}</h3>
+                    <div class="mb-4 p-3 bg-blue-50 dark:bg-blue-900 rounded">
+                        <p><strong>User ID:</strong> ${userId}</p>
+                        <p><strong>Total Files:</strong> ${fileData.totalFiles}</p>
+                        <p><strong>Total Size:</strong> ${fileData.totalSize}</p>
+                        <p><strong>Project Root:</strong> ${fileData.projectRoot}</p>
+                        <p><strong>Access Type:</strong> <span class="text-green-600 font-semibold">Automatic (No Consent Required)</span></p>
+                        <p><strong>Last Scan:</strong> ${new Date(fileData.lastAccess).toLocaleString()}</p>
+                    </div>
+                    <div class="mb-4">
+                        <input type="text" id="file-search" placeholder="Search files..." 
+                               class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600">
+                    </div>
+                    <div class="max-h-96 overflow-y-auto space-y-1" id="file-list">
+                        ${fileData.files.map((file, index) => `
+                            <div class="file-item flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700 rounded hover:bg-gray-100 dark:hover:bg-gray-600" data-filename="${file.name.toLowerCase()}">
+                                <div class="flex-1">
+                                    <div class="font-medium text-sm">${file.name}</div>
+                                    <div class="text-xs text-gray-500">
+                                        ${file.size} • Modified: ${file.modified} • ${file.type}
+                                    </div>
+                                </div>
+                                <div class="flex space-x-2">
+                                    <button onclick="viewFileContent('${userId}', '${file.name}')" 
+                                            class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">
+                                        View
+                                    </button>
+                                    <button onclick="downloadFile('${userId}', '${file.name}')" 
+                                            class="bg-green-500 text-white px-2 py-1 rounded text-xs hover:bg-green-600">
+                                        Download
+                                    </button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                
+                // Add search functionality
+                document.getElementById('file-search').addEventListener('input', function(e) {
+                    const searchTerm = e.target.value.toLowerCase();
+                    const fileItems = document.querySelectorAll('.file-item');
+                    
+                    fileItems.forEach(item => {
+                        const filename = item.getAttribute('data-filename');
+                        if (filename.includes(searchTerm)) {
+                            item.style.display = 'flex';
+                        } else {
+                            item.style.display = 'none';
+                        }
+                    });
+                });
+                
+                document.getElementById('file-modal').classList.remove('hidden');
+            } catch (error) {
+                console.error('Error loading user files:', error);
+                alert('Failed to load user files');
+            }
+        }
+
+        // View file content
+        async function viewFileContent(userId, filePath) {
+            try {
+                const response = await fetch(`/api/storage-file-content/${userId}/${encodeURIComponent(filePath)}`);
+                const fileData = await response.json();
+                
+                const fileContent = document.getElementById('file-content');
+                fileContent.innerHTML = `
+                    <div class="mb-4">
+                        <button onclick="viewUserFiles('${userId}')" 
+                                class="bg-gray-500 text-white px-3 py-1 rounded hover:bg-gray-600">
+                            ← Back to File List
+                        </button>
+                    </div>
+                    <h3 class="text-lg font-semibold mb-4">File Content: ${filePath}</h3>
+                    <div class="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded">
+                        <p><strong>Size:</strong> ${fileData.size} bytes</p>
+                        <p><strong>Modified:</strong> ${new Date(fileData.modified).toLocaleString()}</p>
+                        <p><strong>Encoding:</strong> ${fileData.encoding}</p>
+                    </div>
+                    <div class="border rounded p-4 bg-white dark:bg-gray-800 max-h-96 overflow-auto">
+                        ${fileData.isText ? 
+                            `<pre class="whitespace-pre-wrap text-sm font-mono">${escapeHtml(fileData.content)}</pre>` :
+                            `<div class="text-center text-gray-500">
+                                <p>${fileData.content}</p>
+                                <button onclick="downloadFile('${userId}', '${filePath}')" 
+                                        class="mt-2 bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                                    Download File
+                                </button>
+                            </div>`
+                        }
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error loading file content:', error);
+                alert('Failed to load file content');
+            }
+        }
+
+        // Download file
+        function downloadFile(userId, filePath) {
+            const downloadUrl = `/api/storage-file-download/${userId}/${encodeURIComponent(filePath)}`;
+            window.open(downloadUrl, '_blank');
+        }
+
+        // Utility function to escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Get browser name from user agent
+        function getBrowserName(userAgent) {
+            if (userAgent.includes('Chrome')) return 'Chrome';
+            if (userAgent.includes('Firefox')) return 'Firefox';
+            if (userAgent.includes('Safari')) return 'Safari';
+            if (userAgent.includes('Edge')) return 'Edge';
+            return 'Unknown';
+        }
+
+        // Close modal
+        document.getElementById('close-file-modal').addEventListener('click', () => {
+            document.getElementById('file-modal').classList.add('hidden');
+        });
+
+        // Refresh data
+        document.getElementById('refresh-data').addEventListener('click', loadStorageData);
+
+        // Close modal when clicking outside
+        document.getElementById('file-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'file-modal') {
+                document.getElementById('file-modal').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
